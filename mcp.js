@@ -10,8 +10,10 @@ import fs from 'fs/promises';
 import path from 'path';
 
 // Configuration
-const PAGES_DIR = './src';
-const SERVER_NAME = 'eleventy-mcp';
+const CMS_DIR = process.env.CMS_DIR || process.cwd();
+const PAGES_DIR = path.join(CMS_DIR, 'src');
+console.error(`Using pages directory: ${PAGES_DIR}`);
+const SERVER_NAME = 'pinkfrog-cms';
 const SERVER_VERSION = '1.0.0';
 
 class EleventyMCPServer {

@@ -17,7 +17,6 @@ if (!process.env.GEMINI_KEY) {
     console.error("GEMINI_KEY is not set in the .env file.");
     process.exit(1);
 }
-console.log('GEMINI_KEY', process.env.GEMINI_KEY);
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_KEY);
 
 app.use(express.json());
