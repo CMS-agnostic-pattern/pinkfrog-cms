@@ -2,6 +2,7 @@
 
 ## MCP server settings
 
+```json
 {
   "mcpServers": {
     "pinkfrog-cms": {
@@ -13,3 +14,10 @@
     }
   }
 }
+```
+
+## Eleventy start
+
+```bash
+npx eleventy --config=.eleventy.cjs --serve
+```
