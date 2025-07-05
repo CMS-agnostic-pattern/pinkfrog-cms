@@ -56,6 +56,28 @@ async function main() {
                             properties: {},
                         },
                     },
+                    {
+                        name: 'create_page',
+                        description: 'Create a new page',
+                        inputSchema: {
+                            type: 'object',
+                            properties: {
+                                fileName: {
+                                    type: 'string',
+                                    description: 'The name of the file to create (e.g., "my-new-page.md")',
+                                },
+                                title: {
+                                    type: 'string',
+                                    description: 'The title of the page',
+                                },
+                                copy: {
+                                    type: 'string',
+                                    description: 'The content of the page in Markdown format',
+                                },
+                            },
+                            required: ['fileName', 'title', 'copy'],
+                        },
+                    },
                 ],
             };
             debugLog('Sending ListTools response:', response);
@@ -104,6 +126,33 @@ async function main() {
                         
                         debugLog('Sending list_pages response:', response);
                         return response;
+
+                    case 'create_page':
+                        debugLog('Processing create_page request', args);
+                        const { fileName, title, copy } = args;
+
+                        if (!fileName || !title || !copy) {
+                            throw new Error('Missing required arguments: fileName, title, and copy are required.');
+                        }
+
+                        const filePath = path.join(PAGES_DIR, fileName);
+                        const content = `---\ntitle: ${title}\n---\n\n${copy}`;
+
+                        await fs.writeFile(filePath, content);
+                        debugLog(`Created new page at ${filePath}`);
+
+                        return {
+                            content: [
+                                {
+                                    type: 'text',
+                                    text: JSON.stringify({
+                                        success: true,
+                                        message: `Page "${fileName}" created successfully.`,
+                                        filePath,
+                                    }),
+                                },
+                            ],
+                        };
 
                     default:
                         debugLog('Unknown tool requested:', name);
