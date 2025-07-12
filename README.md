@@ -25,16 +25,19 @@ npx eleventy --config=.eleventy.cjs --serve
 ## SRC structure
 
 - src
+    - settings.yml
     - content
         - en
+            - index.md
             - page1.md
             - page2.md
             - page3.md
         - de
+            - index.md
             - page1.md
             - page2.md
             - page3.md
-    - sructure
+    - structure
         - blog
             - header.md
             - footer.md
@@ -49,19 +52,23 @@ npx eleventy --config=.eleventy.cjs --serve
             - index.md
     - decoration
         - light
+            - index
+                - template.html
+                - example.md
+                - example.html
             - header
                 - template.html
                 - example.md
                 - example.html
             - footer
-                - template.html
-                - example.md
-                - example.html
-            - index
                 - template.html
                 - example.md
                 - example.html
         - dark
+            - index
+                - template.html
+                - example.md
+                - example.html
             - header
                 - template.html
                 - example.md
@@ -69,9 +76,5 @@ npx eleventy --config=.eleventy.cjs --serve
             - footer
                 - template.html
                 - example.md
-                - example.html
-            - index
-                - template.html
-                - example.md
-                - example.html            
+                - example.html         
     
