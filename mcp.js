@@ -118,6 +118,24 @@ async function main() {
                             required: ['component'],
                         },
                     },
+                    {
+                        name: 'save_html',
+                        description: 'Save an HTML file in the dist folder',
+                        inputSchema: {
+                            type: 'object',
+                            properties: {
+                                fileName: {
+                                    type: 'string',
+                                    description: 'The name of the HTML file to create',
+                                },
+                                content: {
+                                    type: 'string',
+                                    description: 'The content of the HTML file',
+                                },
+                            },
+                            required: ['fileName', 'content'],
+                        },
+                    },
                 ],
             };
             debugLog('Sending ListTools response:', response);
@@ -462,6 +480,88 @@ ${copy}`;
                                 },
                             ],
                         };
+
+                    case 'save_html':
+                        debugLog('Processing save_html request', args);
+                        
+                        // Get parameters from args
+                        const { fileName: staticFileName, content: staticContent } = args;
+                        
+                        // Validate required parameters
+                        if (!staticFileName) {
+                            throw new Error('Missing required argument: fileName');
+                        }
+                        if (!staticContent) {
+                            throw new Error('Missing required argument: content');
+                        }
+                        
+                        debugLog(`Generating static file: ${staticFileName}`);
+                        
+                        // Ensure the dist directory exists
+                        const distDir = path.join(CMS_DIR, 'dist');
+                        let staticFilePath = '';
+                        
+                        try {
+                            // Check if dist directory exists
+                            try {
+                                await fs.access(distDir);
+                                debugLog('dist directory exists');
+                            } catch (error) {
+                                // Create dist directory if it doesn't exist
+                                await fs.mkdir(distDir, { recursive: true });
+                                debugLog(`Created dist directory: ${distDir}`);
+                            }
+                            
+                            // Determine the file path
+                            staticFilePath = path.join(distDir, staticFileName);
+                            
+                            // Create any necessary subdirectories
+                            const fileDir = path.dirname(staticFilePath);
+                            if (fileDir !== distDir) {
+                                try {
+                                    await fs.access(fileDir);
+                                    debugLog(`Subdirectory ${fileDir} exists`);
+                                } catch (error) {
+                                    await fs.mkdir(fileDir, { recursive: true });
+                                    debugLog(`Created subdirectory: ${fileDir}`);
+                                }
+                            }
+                            
+                            // Write the file
+                            await fs.writeFile(staticFilePath, staticContent);
+                            debugLog(`Static file ${staticFileName} generated successfully at ${staticFilePath}`);
+                            
+                            return {
+                                content: [
+                                    {
+                                        type: 'text',
+                                        text: JSON.stringify({
+                                            success: true,
+                                            message: `Static file ${staticFileName} generated successfully.`,
+                                            filePath: staticFilePath,
+                                            distDir
+                                        })
+                                    },
+                                ],
+                            };
+                            
+                        } catch (error) {
+                            debugLog(`Error generating static file ${staticFileName}:`, error.message);
+                            
+                            return {
+                                content: [
+                                    {
+                                        type: 'text',
+                                        text: JSON.stringify({
+                                            success: false,
+                                            message: `Error generating static file ${staticFileName}: ${error.message}`,
+                                            filePath: staticFilePath,
+                                            distDir
+                                        })
+                                    },
+                                ],
+                            };
+                        }
                         
                     default:
                         debugLog('Unknown tool requested:', name);
