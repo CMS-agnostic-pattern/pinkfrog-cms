@@ -1,5 +1,4 @@
 <!--
-theme: light
 component: home-hero
 -->
 Let's complete the next project together!

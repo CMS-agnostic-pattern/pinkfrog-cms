@@ -104,6 +104,20 @@ async function main() {
                             },
                         },
                     },
+                    {
+                        name: 'get_component',
+                        description: 'Get a component from the decoration components folder',
+                        inputSchema: {
+                            type: 'object',
+                            properties: {
+                                component: {
+                                    type: 'string',
+                                    description: 'The name of the component to retrieve',
+                                },
+                            },
+                            required: ['component'],
+                        },
+                    },
                 ],
             };
             debugLog('Sending ListTools response:', response);
@@ -348,6 +362,102 @@ ${copy}`;
                                         templateName,
                                         templateExists,
                                         template: templateContent
+                                    })
+                                },
+                            ],
+                        };
+
+                    case 'get_component':
+                        debugLog('Processing get_component request', args);
+                        
+                        // Get component name from args
+                        const { component } = args;
+                        
+                        if (!component) {
+                            throw new Error('Missing required argument: component');
+                        }
+                        
+                        debugLog(`Component requested: ${component}`);
+                        
+                        // Read settings.yml to get decoration value
+                        const componentSettingsPath = path.join(PAGES_DIR, 'settings.yml');
+                        let componentDecoration = 'light'; // Default value
+                        
+                        try {
+                            const componentSettingsContent = await fs.readFile(componentSettingsPath, 'utf8');
+                            const componentSettingsLines = componentSettingsContent.split('\n');
+                            
+                            for (const line of componentSettingsLines) {
+                                if (line.startsWith('decoration:')) {
+                                    componentDecoration = line.split(':')[1].trim();
+                                    break;
+                                }
+                            }
+                            debugLog(`Found decoration setting for component: ${componentDecoration}`);
+                        } catch (error) {
+                            debugLog('Error reading settings.yml for component:', error.message);
+                        }
+                        
+                        // Get component files from the decoration folder
+                        const componentsDir = path.join(PAGES_DIR, 'decoration', componentDecoration, 'components');
+                        const componentDir = path.join(componentsDir, component);
+                        
+                        // Files to retrieve
+                        const componentTemplatePath = path.join(componentDir, 'template.html');
+                        const exampleMdPath = path.join(componentDir, 'example.md');
+                        const exampleHtmlPath = path.join(componentDir, 'example.html');
+                        
+                        let componentTemplateContent = null;
+                        let exampleMdContent = null;
+                        let exampleHtmlContent = null;
+                        let componentExists = false;
+                        
+                        try {
+                            // Check if component directory exists
+                            await fs.access(componentDir);
+                            componentExists = true;
+                            
+                            // Read template.html
+                            try {
+                                componentTemplateContent = await fs.readFile(componentTemplatePath, 'utf8');
+                                debugLog(`Component ${component} template.html read successfully`);
+                            } catch (error) {
+                                debugLog(`Error reading ${component} template.html:`, error.message);
+                            }
+                            
+                            // Read example.md
+                            try {
+                                exampleMdContent = await fs.readFile(exampleMdPath, 'utf8');
+                                debugLog(`Component ${component} example.md read successfully`);
+                            } catch (error) {
+                                debugLog(`Error reading ${component} example.md:`, error.message);
+                            }
+                            
+                            // Read example.html
+                            try {
+                                exampleHtmlContent = await fs.readFile(exampleHtmlPath, 'utf8');
+                                debugLog(`Component ${component} example.html read successfully`);
+                            } catch (error) {
+                                debugLog(`Error reading ${component} example.html:`, error.message);
+                            }
+                            
+                        } catch (error) {
+                            debugLog(`Component ${component} directory not found:`, error.message);
+                        }
+                        
+                        return {
+                            content: [
+                                {
+                                    type: 'text',
+                                    text: JSON.stringify({
+                                        decoration: componentDecoration,
+                                        componentsDir,
+                                        componentDir,
+                                        component,
+                                        componentExists,
+                                        template: componentTemplateContent,
+                                        exampleMd: exampleMdContent,
+                                        exampleHtml: exampleHtmlContent
                                     })
                                 },
                             ],
