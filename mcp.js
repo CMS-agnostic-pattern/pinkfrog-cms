@@ -8,6 +8,9 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import fs from 'fs/promises';
 import path from 'path';
+import http from 'http';
+import { createReadStream } from 'fs';
+import { stat } from 'fs/promises';
 
 // Configuration
 const CMS_DIR = process.env.CMS_DIR || process.cwd();
@@ -169,6 +172,20 @@ async function main() {
                         inputSchema: {
                             type: 'object',
                             properties: {},
+                            required: [],
+                        },
+                    },
+                    {
+                        name: 'run_server',
+                        description: 'Run a local web server with root in dist folder',
+                        inputSchema: {
+                            type: 'object',
+                            properties: {
+                                port: {
+                                    type: 'number',
+                                    description: 'Port to run the server on (default: 8080)',
+                                },
+                            },
                             required: [],
                         },
                     },
@@ -841,6 +858,172 @@ ${copy}`;
                                             success: false,
                                             message: `Error emptying dist folder: ${error.message}`,
                                             distDir: emptyDistDir
+                                        })
+                                    },
+                                ],
+                            };
+                        }
+
+                    case 'run_server':
+                        debugLog('Processing run_server request', args);
+                        
+                        // Get parameters from args
+                        const { port = 8080 } = args;
+                        
+                        // Define the dist directory
+                        const serverRootDir = path.join(CMS_DIR, 'dist');
+                        
+                        try {
+                            // Check if dist directory exists
+                            await fs.access(serverRootDir).catch(() => {
+                                throw new Error(`Server root directory ${serverRootDir} does not exist`);
+                            });
+                            
+                            // Define MIME types for common file extensions
+                            const mimeTypes = {
+                                '.html': 'text/html',
+                                '.css': 'text/css',
+                                '.js': 'text/javascript',
+                                '.json': 'application/json',
+                                '.png': 'image/png',
+                                '.jpg': 'image/jpeg',
+                                '.jpeg': 'image/jpeg',
+                                '.gif': 'image/gif',
+                                '.svg': 'image/svg+xml',
+                                '.ico': 'image/x-icon',
+                                '.txt': 'text/plain',
+                                '.pdf': 'application/pdf',
+                                '.mp4': 'video/mp4',
+                                '.webm': 'video/webm',
+                                '.mp3': 'audio/mpeg',
+                                '.woff': 'font/woff',
+                                '.woff2': 'font/woff2',
+                                '.ttf': 'font/ttf',
+                                '.eot': 'application/vnd.ms-fontobject',
+                                '.otf': 'font/otf',
+                            };
+                            
+                            // Create a simple HTTP server
+                            let server = null;
+                            
+                            try {
+                                server = http.createServer(async (req, res) => {
+                                    try {
+                                        // Get the requested URL path
+                                        let urlPath = req.url;
+                                        
+                                        // Remove query parameters if present
+                                        urlPath = urlPath.split('?')[0];
+                                        
+                                        // Default to index.html for root path
+                                        if (urlPath === '/') {
+                                            urlPath = '/index.html';
+                                        }
+                                        
+                                        // Construct the file path
+                                        const filePath = path.join(serverRootDir, urlPath);
+                                        
+                                        // Check if the file exists and is not a directory
+                                        try {
+                                            const stats = await stat(filePath);
+                                            
+                                            if (stats.isDirectory()) {
+                                                // Try to serve index.html from the directory
+                                                const indexPath = path.join(filePath, 'index.html');
+                                                try {
+                                                    await stat(indexPath);
+                                                    serveFile(indexPath, res);
+                                                } catch (err) {
+                                                    // No index.html in directory
+                                                    res.writeHead(404, { 'Content-Type': 'text/plain' });
+                                                    res.end('404 Not Found');
+                                                }
+                                            } else {
+                                                // Serve the file
+                                                serveFile(filePath, res);
+                                            }
+                                        } catch (err) {
+                                            // File not found
+                                            res.writeHead(404, { 'Content-Type': 'text/plain' });
+                                            res.end('404 Not Found');
+                                        }
+                                    } catch (err) {
+                                        // Server error
+                                        res.writeHead(500, { 'Content-Type': 'text/plain' });
+                                        res.end('500 Internal Server Error');
+                                        debugLog(`Server error: ${err.message}`);
+                                    }
+                                });
+                                
+                                // Helper function to serve a file
+                                function serveFile(filePath, res) {
+                                    // Determine the file's MIME type
+                                    const ext = path.extname(filePath).toLowerCase();
+                                    const contentType = mimeTypes[ext] || 'application/octet-stream';
+                                    
+                                    // Set headers and stream the file
+                                    res.writeHead(200, { 'Content-Type': contentType });
+                                    const fileStream = createReadStream(filePath);
+                                    fileStream.pipe(res);
+                                    
+                                    // Handle file stream errors
+                                    fileStream.on('error', (err) => {
+                                        res.writeHead(500, { 'Content-Type': 'text/plain' });
+                                        res.end('500 Internal Server Error');
+                                        debugLog(`Error streaming file: ${err.message}`);
+                                    });
+                                }
+                                
+                                // Start the server
+                                server.listen(port, () => {
+                                    debugLog(`Server running at http://localhost:${port}/`);
+                                });
+                                
+                                // Handle server errors
+                                server.on('error', (err) => {
+                                    throw err;
+                                });
+                                
+                                return {
+                                    content: [
+                                        {
+                                            type: 'text',
+                                            text: JSON.stringify({
+                                                success: true,
+                                                message: `Server running at http://localhost:${port}/`,
+                                                port,
+                                                rootDir: serverRootDir,
+                                                url: `http://localhost:${port}/`
+                                            })
+                                        },
+                                    ],
+                                };
+                                
+                            } catch (serverError) {
+                                // Clean up if server creation failed
+                                if (server) {
+                                    try {
+                                        server.close();
+                                    } catch (closeError) {
+                                        debugLog(`Error closing server: ${closeError.message}`);
+                                    }
+                                }
+                                
+                                throw serverError;
+                            }
+                            
+                        } catch (error) {
+                            debugLog(`Error starting server: ${error.message}`);
+                            
+                            return {
+                                content: [
+                                    {
+                                        type: 'text',
+                                        text: JSON.stringify({
+                                            success: false,
+                                            message: `Error starting server: ${error.message}`,
+                                            port,
+                                            rootDir: serverRootDir
                                         })
                                     },
                                 ],
