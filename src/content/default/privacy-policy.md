@@ -1,8 +1,9 @@
 ---
 title: "Privacy Policy"
 template: index.html
-alias: /policy.html
+alias: policy.html
 ---
+
 # {{ title }}
 
 At Pink Frog Agency ([https://pinkfrog.agency](https://www.example.com)), we value and respect the privacy of our visitors. This Privacy Policy outlines how we handle information collected through cookies and the contact form on our website.

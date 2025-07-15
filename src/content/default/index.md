@@ -1,7 +1,7 @@
 ---
 title: "PinkFrog Agency"
 template: index.html
-alias: /index.html
+alias: index.html
 ---
 <!--
 component: home-hero

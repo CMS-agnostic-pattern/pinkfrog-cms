@@ -136,6 +136,24 @@ async function main() {
                             required: ['fileName', 'content'],
                         },
                     },
+                    {
+                        name: 'get_page',
+                        description: 'Get the content of a specific page',
+                        inputSchema: {
+                            type: 'object',
+                            properties: {
+                                pageName: {
+                                    type: 'string',
+                                    description: 'The name of the page file with .md extension',
+                                },
+                                dataSet: {
+                                    type: 'string',
+                                    description: 'The subfolder where there are files with the content. It equals "default" if it\'s not set.',
+                                },
+                            },
+                            required: ['pageName'],
+                        },
+                    },
                 ],
             };
             debugLog('Sending ListTools response:', response);
@@ -557,6 +575,88 @@ ${copy}`;
                                             message: `Error generating static file ${staticFileName}: ${error.message}`,
                                             filePath: staticFilePath,
                                             distDir
+                                        })
+                                    },
+                                ],
+                            };
+                        }
+                        
+                    case 'get_page':
+                        debugLog('Processing get_page request', args);
+                        
+                        // Get parameters from args
+                        const { pageName, dataSet: getPageDataSet = 'default' } = args;
+                        
+                        // Validate required parameters
+                        if (!pageName) {
+                            throw new Error('Missing required argument: pageName');
+                        }
+                        
+                        debugLog(`Getting page: ${pageName} from dataset: ${getPageDataSet}`);
+                        
+                        // Determine the file path
+                        const getPageContentDir = path.join(PAGES_DIR, 'content', getPageDataSet);
+                        const pageFilePath = path.join(getPageContentDir, pageName);
+                        
+                        try {
+                            // Check if file exists
+                            await fs.access(pageFilePath);
+                            
+                            // Read the file content
+                            const pageContent = await fs.readFile(pageFilePath, 'utf8');
+                            debugLog(`Page ${pageName} read successfully`);
+                            
+                            // Parse frontmatter and content
+                            let attributes = {};
+                            let content = pageContent;
+                            
+                            // Simple frontmatter parsing
+                            const frontmatterMatch = pageContent.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
+                            if (frontmatterMatch) {
+                                const frontmatterStr = frontmatterMatch[1];
+                                content = frontmatterMatch[2].trim();
+                                
+                                // Parse frontmatter key-value pairs
+                                const frontmatterLines = frontmatterStr.split('\n');
+                                for (const line of frontmatterLines) {
+                                    if (line.includes(':')) {
+                                        const [key, ...valueParts] = line.split(':');
+                                        const value = valueParts.join(':').trim();
+                                        attributes[key.trim()] = value.replace(/^"(.*)"$/, '$1'); // Remove quotes if present
+                                    }
+                                }
+                            }
+                            
+                            return {
+                                content: [
+                                    {
+                                        type: 'text',
+                                        text: JSON.stringify({
+                                            success: true,
+                                            pageName,
+                                            dataSet: getPageDataSet,
+                                            filePath: pageFilePath,
+                                            attributes,
+                                            content,
+                                            rawContent: pageContent
+                                        })
+                                    },
+                                ],
+                            };
+                            
+                        } catch (error) {
+                            debugLog(`Error reading page ${pageName}:`, error.message);
+                            
+                            return {
+                                content: [
+                                    {
+                                        type: 'text',
+                                        text: JSON.stringify({
+                                            success: false,
+                                            message: `Error reading page ${pageName}: ${error.message}`,
+                                            pageName,
+                                            dataSet: getPageDataSet,
+                                            filePath: pageFilePath
                                         })
                                     },
                                 ],
