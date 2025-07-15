@@ -154,6 +154,24 @@ async function main() {
                             required: ['pageName'],
                         },
                     },
+                    {
+                        name: 'copy_media',
+                        description: 'Copy all files from src/media to dist/media',
+                        inputSchema: {
+                            type: 'object',
+                            properties: {},
+                            required: [],
+                        },
+                    },
+                    {
+                        name: 'empty_dist',
+                        description: 'Empty the dist folder',
+                        inputSchema: {
+                            type: 'object',
+                            properties: {},
+                            required: [],
+                        },
+                    },
                 ],
             };
             debugLog('Sending ListTools response:', response);
@@ -657,6 +675,172 @@ ${copy}`;
                                             pageName,
                                             dataSet: getPageDataSet,
                                             filePath: pageFilePath
+                                        })
+                                    },
+                                ],
+                            };
+                        }
+
+                    case 'copy_media':
+                        debugLog('Processing copy_media request');
+                        
+                        // Define source and destination directories
+                        const mediaSourceDir = path.join(PAGES_DIR, 'media');
+                        const mediaDestDir = path.join(CMS_DIR, 'dist', 'media');
+                        
+                        try {
+                            // Check if source directory exists
+                            await fs.access(mediaSourceDir).catch(() => {
+                                throw new Error(`Source directory ${mediaSourceDir} does not exist`);
+                            });
+                            
+                            // Create destination directory if it doesn't exist
+                            await fs.mkdir(mediaDestDir, { recursive: true }).catch(err => {
+                                if (err.code !== 'EEXIST') {
+                                    throw err;
+                                }
+                            });
+                            
+                            // Function to recursively copy files and directories
+                            async function copyRecursive(src, dest) {
+                                const stats = await fs.stat(src);
+                                
+                                if (stats.isDirectory()) {
+                                    // Create destination directory
+                                    await fs.mkdir(dest, { recursive: true }).catch(err => {
+                                        if (err.code !== 'EEXIST') {
+                                            throw err;
+                                        }
+                                    });
+                                    
+                                    // Read source directory
+                                    const entries = await fs.readdir(src);
+                                    
+                                    // Copy each entry recursively
+                                    for (const entry of entries) {
+                                        await copyRecursive(
+                                            path.join(src, entry),
+                                            path.join(dest, entry)
+                                        );
+                                    }
+                                } else if (stats.isFile()) {
+                                    // Copy file
+                                    await fs.copyFile(src, dest);
+                                    debugLog(`Copied file: ${src} -> ${dest}`);
+                                }
+                            }
+                            
+                            // Start recursive copy
+                            await copyRecursive(mediaSourceDir, mediaDestDir);
+                            
+                            debugLog('Media files copied successfully');
+                            
+                            return {
+                                content: [
+                                    {
+                                        type: 'text',
+                                        text: JSON.stringify({
+                                            success: true,
+                                            message: 'Media files copied successfully',
+                                            sourceDir: mediaSourceDir,
+                                            destinationDir: mediaDestDir
+                                        })
+                                    },
+                                ],
+                            };
+                            
+                        } catch (error) {
+                            debugLog(`Error copying media files: ${error.message}`);
+                            
+                            return {
+                                content: [
+                                    {
+                                        type: 'text',
+                                        text: JSON.stringify({
+                                            success: false,
+                                            message: `Error copying media files: ${error.message}`,
+                                            sourceDir: mediaSourceDir,
+                                            destinationDir: mediaDestDir
+                                        })
+                                    },
+                                ],
+                            };
+                        }
+
+                    case 'empty_dist':
+                        debugLog('Processing empty_dist request');
+                        
+                        // Define the dist directory
+                        const emptyDistDir = path.join(CMS_DIR, 'dist');
+                        
+                        try {
+                            // Check if dist directory exists
+                            await fs.access(emptyDistDir).catch(() => {
+                                // If it doesn't exist, create it and return success
+                                return fs.mkdir(emptyDistDir, { recursive: true });
+                            });
+                            
+                            // Function to recursively remove files and directories
+                            async function removeRecursive(dirPath) {
+                                try {
+                                    // Read directory contents
+                                    const entries = await fs.readdir(dirPath);
+                                    
+                                    // Process each entry
+                                    for (const entry of entries) {
+                                        const entryPath = path.join(dirPath, entry);
+                                        const stats = await fs.stat(entryPath);
+                                        
+                                        if (stats.isDirectory()) {
+                                            // Recursively remove directory contents
+                                            await removeRecursive(entryPath);
+                                            // Then remove the directory itself
+                                            await fs.rmdir(entryPath);
+                                            debugLog(`Removed directory: ${entryPath}`);
+                                        } else {
+                                            // Remove file
+                                            await fs.unlink(entryPath);
+                                            debugLog(`Removed file: ${entryPath}`);
+                                        }
+                                    }
+                                } catch (err) {
+                                    // If directory doesn't exist or can't be read, just log and continue
+                                    debugLog(`Error processing directory ${dirPath}: ${err.message}`);
+                                }
+                            }
+                            
+                            // Start recursive removal
+                            await removeRecursive(emptyDistDir);
+                            
+                            // Recreate the dist directory
+                            await fs.mkdir(emptyDistDir, { recursive: true });
+                            
+                            debugLog('Dist folder emptied successfully');
+                            
+                            return {
+                                content: [
+                                    {
+                                        type: 'text',
+                                        text: JSON.stringify({
+                                            success: true,
+                                            message: 'Dist folder emptied successfully',
+                                            distDir: emptyDistDir
+                                        })
+                                    },
+                                ],
+                            };
+                            
+                        } catch (error) {
+                            debugLog(`Error emptying dist folder: ${error.message}`);
+                            
+                            return {
+                                content: [
+                                    {
+                                        type: 'text',
+                                        text: JSON.stringify({
+                                            success: false,
+                                            message: `Error emptying dist folder: ${error.message}`,
+                                            distDir: emptyDistDir
                                         })
                                     },
                                 ],
