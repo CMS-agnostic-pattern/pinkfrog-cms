@@ -65,6 +65,24 @@ async function main() {
                         },
                     },
                     {
+                        name: 'xml_sitemap',
+                        description: 'Generate sitemap.xml file in dist folder based on existing pages',
+                        inputSchema: {
+                            type: 'object',
+                            properties: {
+                                baseUrl: {
+                                    type: 'string',
+                                    description: 'Base URL for the website (e.g., https://example.com)',
+                                },
+                                dataSet: {
+                                    type: 'string',
+                                    description: 'The subfolder where there are files with the content. It equals "default" if it\'s not set.',
+                                },
+                            },
+                            required: ['baseUrl'],
+                        },
+                    },
+                    {
                         name: 'create_page',
                         description: 'Create a new page',
                         inputSchema: {
@@ -863,154 +881,264 @@ ${copy}`;
                                 ],
                             };
                         }
+                        
+                    case 'xml_sitemap':
+                        debugLog('Processing xml_sitemap request', args);
+                        
+                        // Get parameters from args
+                        const { baseUrl, dataSet: sitemapDataSet = 'default' } = args;
+                        
+                        // Validate required parameters
+                        if (!baseUrl) {
+                            throw new Error('Missing required argument: baseUrl');
+                        }
+                        
+                        debugLog(`Generating sitemap.xml with baseUrl: ${baseUrl} for dataset: ${sitemapDataSet}`);
+                        
+                        try {
+                            // Get the list of pages
+                            const contentDir = path.join(PAGES_DIR, 'content', sitemapDataSet);
+                            let mdFiles = [];
+                            
+                            try {
+                                // Check if directory exists
+                                await fs.access(contentDir);
+                                
+                                // Read directory contents
+                                const files = await fs.readdir(contentDir);
+                                
+                                // Filter for markdown files
+                                mdFiles = files.filter(file => file.endsWith('.md'));
+                                debugLog('Found markdown files for sitemap:', mdFiles);
+                            } catch (error) {
+                                debugLog(`Error reading pages directory for sitemap: ${error.message}`);
+                                throw new Error(`Error reading pages directory: ${error.message}`);
+                            }
+                            
+                            // Process each page to get its URL
+                            const urls = [];
+                            const currentDate = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+                            
+                            for (const mdFile of mdFiles) {
+                                try {
+                                    // Read the file to get its metadata
+                                    const filePath = path.join(contentDir, mdFile);
+                                    const content = await fs.readFile(filePath, 'utf8');
+                                    
+                                    // Parse frontmatter
+                                    const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
+                                    let url = '';
+                                    
+                                    if (frontmatterMatch) {
+                                        const frontmatterStr = frontmatterMatch[1];
+                                        const frontmatterLines = frontmatterStr.split('\n');
+                                        
+                                        // Check for alias in frontmatter
+                                        let alias = null;
+                                        for (const line of frontmatterLines) {
+                                            if (line.startsWith('alias:')) {
+                                                alias = line.split(':')[1].trim().replace(/^"(.*)"$/, '$1');
+                                                break;
+                                            }
+                                        }
+                                        
+                                        // Use alias if available, otherwise use the filename without extension
+                                        if (alias) {
+                                            url = alias;
+                                        } else {
+                                            url = mdFile.replace(/\.md$/, '.html');
+                                        }
+                                    } else {
+                                        // No frontmatter, use the filename without extension
+                                        url = mdFile.replace(/\.md$/, '.html');
+                                    }
+                                    
+                                    // Add the URL to the list
+                                    urls.push({
+                                        loc: new URL(url, baseUrl).href,
+                                        lastmod: currentDate,
+                                        changefreq: 'weekly',
+                                        priority: url === 'index.html' ? '1.0' : '0.8'
+                                    });
+                                    
+                                } catch (error) {
+                                    debugLog(`Error processing page ${mdFile} for sitemap: ${error.message}`);
+                                    // Continue with other pages
+                                }
+                            }
+                            
+                            // Generate sitemap XML content
+                            let sitemapContent = '<?xml version="1.0" encoding="UTF-8"?>\n';
+                            sitemapContent += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n';
+                            
+                            for (const url of urls) {
+                                sitemapContent += '  <url>\n';
+                                sitemapContent += `    <loc>${url.loc}</loc>\n`;
+                                sitemapContent += `    <lastmod>${url.lastmod}</lastmod>\n`;
+                                sitemapContent += `    <changefreq>${url.changefreq}</changefreq>\n`;
+                                sitemapContent += `    <priority>${url.priority}</priority>\n`;
+                                sitemapContent += '  </url>\n';
+                            }
+                            
+                            sitemapContent += '</urlset>';
+                            
+                            // Ensure the dist directory exists
+                            const distDir = path.join(CMS_DIR, 'dist');
+                            try {
+                                await fs.access(distDir);
+                            } catch (error) {
+                                // Create dist directory if it doesn't exist
+                                await fs.mkdir(distDir, { recursive: true });
+                                debugLog(`Created dist directory: ${distDir}`);
+                            }
+                            
+                            // Write the sitemap.xml file
+                            const sitemapPath = path.join(distDir, 'sitemap.xml');
+                            await fs.writeFile(sitemapPath, sitemapContent);
+                            
+                            debugLog(`Sitemap.xml generated successfully at ${sitemapPath}`);
+                            
+                            return {
+                                content: [
+                                    {
+                                        type: 'text',
+                                        text: JSON.stringify({
+                                            success: true,
+                                            message: 'Sitemap.xml generated successfully',
+                                            sitemapPath,
+                                            baseUrl,
+                                            dataSet: sitemapDataSet,
+                                            urlCount: urls.length,
+                                            urls
+                                        })
+                                    },
+                                ],
+                            };
+                            
+                        } catch (error) {
+                            debugLog(`Error generating sitemap.xml: ${error.message}`);
+                            
+                            return {
+                                content: [
+                                    {
+                                        type: 'text',
+                                        text: JSON.stringify({
+                                            success: false,
+                                            message: `Error generating sitemap.xml: ${error.message}`,
+                                            baseUrl,
+                                            dataSet: sitemapDataSet
+                                        })
+                                    },
+                                ],
+                            };
+                        }
 
                     case 'run_server':
                         debugLog('Processing run_server request', args);
                         
-                        // Get parameters from args
-                        const { port = 8080 } = args;
+                        // Get port from args or use default
+                        const port = args.port || 8080;
+                        debugLog(`Starting server on port ${port}`);
                         
                         // Define the dist directory
-                        const serverRootDir = path.join(CMS_DIR, 'dist');
+                        const serverDistDir = path.join(CMS_DIR, 'dist');
                         
                         try {
                             // Check if dist directory exists
-                            await fs.access(serverRootDir).catch(() => {
-                                throw new Error(`Server root directory ${serverRootDir} does not exist`);
+                            await fs.access(serverDistDir).catch(() => {
+                                throw new Error(`Dist directory ${serverDistDir} does not exist`);
                             });
                             
-                            // Define MIME types for common file extensions
-                            const mimeTypes = {
-                                '.html': 'text/html',
-                                '.css': 'text/css',
-                                '.js': 'text/javascript',
-                                '.json': 'application/json',
-                                '.png': 'image/png',
-                                '.jpg': 'image/jpeg',
-                                '.jpeg': 'image/jpeg',
-                                '.gif': 'image/gif',
-                                '.svg': 'image/svg+xml',
-                                '.ico': 'image/x-icon',
-                                '.txt': 'text/plain',
-                                '.pdf': 'application/pdf',
-                                '.mp4': 'video/mp4',
-                                '.webm': 'video/webm',
-                                '.mp3': 'audio/mpeg',
-                                '.woff': 'font/woff',
-                                '.woff2': 'font/woff2',
-                                '.ttf': 'font/ttf',
-                                '.eot': 'application/vnd.ms-fontobject',
-                                '.otf': 'font/otf',
-                            };
-                            
-                            // Create a simple HTTP server
-                            let server = null;
-                            
-                            try {
-                                server = http.createServer(async (req, res) => {
-                                    try {
-                                        // Get the requested URL path
-                                        let urlPath = req.url;
-                                        
-                                        // Remove query parameters if present
-                                        urlPath = urlPath.split('?')[0];
-                                        
-                                        // Default to index.html for root path
-                                        if (urlPath === '/') {
-                                            urlPath = '/index.html';
-                                        }
-                                        
-                                        // Construct the file path
-                                        const filePath = path.join(serverRootDir, urlPath);
-                                        
-                                        // Check if the file exists and is not a directory
-                                        try {
-                                            const stats = await stat(filePath);
-                                            
-                                            if (stats.isDirectory()) {
-                                                // Try to serve index.html from the directory
-                                                const indexPath = path.join(filePath, 'index.html');
-                                                try {
-                                                    await stat(indexPath);
-                                                    serveFile(indexPath, res);
-                                                } catch (err) {
-                                                    // No index.html in directory
-                                                    res.writeHead(404, { 'Content-Type': 'text/plain' });
-                                                    res.end('404 Not Found');
-                                                }
-                                            } else {
-                                                // Serve the file
-                                                serveFile(filePath, res);
-                                            }
-                                        } catch (err) {
-                                            // File not found
-                                            res.writeHead(404, { 'Content-Type': 'text/plain' });
-                                            res.end('404 Not Found');
-                                        }
-                                    } catch (err) {
-                                        // Server error
-                                        res.writeHead(500, { 'Content-Type': 'text/plain' });
-                                        res.end('500 Internal Server Error');
-                                        debugLog(`Server error: ${err.message}`);
-                                    }
-                                });
-                                
-                                // Helper function to serve a file
-                                function serveFile(filePath, res) {
-                                    // Determine the file's MIME type
-                                    const ext = path.extname(filePath).toLowerCase();
-                                    const contentType = mimeTypes[ext] || 'application/octet-stream';
+                            // Create and start the server
+                            const server = http.createServer(async (req, res) => {
+                                try {
+                                    // Get the requested file path
+                                    let filePath = path.join(serverDistDir, req.url === '/' ? 'index.html' : req.url);
                                     
-                                    // Set headers and stream the file
+                                    // If the path doesn't have an extension, try adding .html
+                                    if (!path.extname(filePath)) {
+                                        filePath += '.html';
+                                    }
+                                    
+                                    // Check if the file exists
+                                    try {
+                                        await fs.access(filePath);
+                                    } catch (error) {
+                                        // File not found
+                                        res.writeHead(404, { 'Content-Type': 'text/plain' });
+                                        res.end('404 Not Found');
+                                        return;
+                                    }
+                                    
+                                    // Get the file's content type
+                                    const extname = path.extname(filePath);
+                                    let contentType = 'text/html';
+                                    
+                                    switch (extname) {
+                                        case '.js':
+                                            contentType = 'text/javascript';
+                                            break;
+                                        case '.css':
+                                            contentType = 'text/css';
+                                            break;
+                                        case '.json':
+                                            contentType = 'application/json';
+                                            break;
+                                        case '.png':
+                                            contentType = 'image/png';
+                                            break;
+                                        case '.jpg':
+                                        case '.jpeg':
+                                            contentType = 'image/jpeg';
+                                            break;
+                                        case '.gif':
+                                            contentType = 'image/gif';
+                                            break;
+                                        case '.svg':
+                                            contentType = 'image/svg+xml';
+                                            break;
+                                        case '.xml':
+                                            contentType = 'application/xml';
+                                            break;
+                                    }
+                                    
+                                    // Stream the file to the response
                                     res.writeHead(200, { 'Content-Type': contentType });
                                     const fileStream = createReadStream(filePath);
                                     fileStream.pipe(res);
                                     
-                                    // Handle file stream errors
-                                    fileStream.on('error', (err) => {
-                                        res.writeHead(500, { 'Content-Type': 'text/plain' });
-                                        res.end('500 Internal Server Error');
-                                        debugLog(`Error streaming file: ${err.message}`);
-                                    });
+                                } catch (error) {
+                                    // Server error
+                                    res.writeHead(500, { 'Content-Type': 'text/plain' });
+                                    res.end(`Server Error: ${error.message}`);
                                 }
-                                
-                                // Start the server
-                                server.listen(port, () => {
-                                    debugLog(`Server running at http://localhost:${port}/`);
-                                });
-                                
-                                // Handle server errors
-                                server.on('error', (err) => {
-                                    throw err;
-                                });
-                                
-                                return {
-                                    content: [
-                                        {
-                                            type: 'text',
-                                            text: JSON.stringify({
-                                                success: true,
-                                                message: `Server running at http://localhost:${port}/`,
-                                                port,
-                                                rootDir: serverRootDir,
-                                                url: `http://localhost:${port}/`
-                                            })
-                                        },
-                                    ],
-                                };
-                                
-                            } catch (serverError) {
-                                // Clean up if server creation failed
-                                if (server) {
-                                    try {
-                                        server.close();
-                                    } catch (closeError) {
-                                        debugLog(`Error closing server: ${closeError.message}`);
-                                    }
-                                }
-                                
-                                throw serverError;
-                            }
+                            });
+                            
+                            // Start listening on the specified port
+                            server.listen(port);
+                            
+                            debugLog(`Server running at http://localhost:${port}/`);
+                            
+                            // Keep the server running until the process is terminated
+                            const serverInfo = {
+                                server,
+                                port,
+                                url: `http://localhost:${port}/`,
+                                distDir: serverDistDir
+                            };
+                            
+                            return {
+                                content: [
+                                    {
+                                        type: 'text',
+                                        text: JSON.stringify({
+                                            success: true,
+                                            message: `Server running at http://localhost:${port}/`,
+                                            ...serverInfo
+                                        })
+                                    },
+                                ],
+                            };
                             
                         } catch (error) {
                             debugLog(`Error starting server: ${error.message}`);
@@ -1023,7 +1151,7 @@ ${copy}`;
                                             success: false,
                                             message: `Error starting server: ${error.message}`,
                                             port,
-                                            rootDir: serverRootDir
+                                            distDir: serverDistDir
                                         })
                                     },
                                 ],
